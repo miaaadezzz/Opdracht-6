@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Canvas Visual Experiment</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: black; }
+    canvas { display: block; }
+    #score { position: absolute; top: 10px; left: 10px; color: white; font-family: sans-serif; font-size: 18px; }
+    #startScreen { 
+      position: absolute; 
+      top: 50%; 
+      left: 50%; 
+      transform: translate(-50%, -50%); 
+      text-align: center; 
+      color: white; 
+      font-family: sans-serif;
+    }
+    #fullscreenBtn { position: absolute; top: 10px; right: 10px; color: white; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="score">Score: 0</div>
+  <div id="startScreen">
+    <h1>Welcome to the Game!</h1>
+    <p>Click on the moving target to gain points!</p>
+    <button id="startBtn">Start Game</button>
+  </div>
+  <canvas id="canvas"></canvas>
+  <audio id="clickSound" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_612fe3e1ae.mp3?filename=click-124467.mp3"></audio>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const clickSound = document.getElementById("clickSound");
+    const scoreElement = document.getElementById("score");
+    const startScreen = document.getElementById("startScreen");
+    const startBtn = document.getElementById("startBtn");
+    const fullscreenBtn = document.createElement("button");
+    fullscreenBtn.textContent = "Fullscreen";
+    document.body.appendChild(fullscreenBtn);
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let particles = [];
+    const colors = ["#ff0055", "#00f7ff", "#ffd500", "#7cff00", "#ff00f2"];
+
+    class Particle {
+      constructor(x, y, radius, color, velocity) {
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.color = color;
+        this.velocity = velocity;
+      }
+
+      update() {
+        this.x += this.velocity.x;
+        this.y += this.velocity.y;
+
+        if (this.x - this.radius < 0 || this.x + this.radius > canvas.width) {
+          this.velocity.x *= -1;
+        }
+        if (this.y - this.radius < 0 || this.y + this.radius > canvas.height) {
+          this.velocity.y *= -1;
+        }
+
+        this.draw();
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 15;
+        ctx.fill();
+        ctx.closePath();
+      }
+    }
+
+    function createParticles(num) {
+      for (let i = 0; i < num; i++) {
+        const radius = Math.random() * 5 + 2;
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const velocity = {
+          x: (Math.random() - 0.5) * 2,
+          y: (Math.random() - 0.5) * 2
+        };
+        particles.push(new Particle(x, y, radius, color, velocity));
+      }
+    }
+
+    function drawOrbitingShape(time) {
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = 150;
+      const angle = time * 0.002;
+
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = "white";
+      ctx.fillRect(-10, -10, 20, 20);
+      ctx.restore();
+    }
+
+    // Game target (click to gain score)
+    let score = 0;
+    let target = {
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      radius: 20,
+      color: "#00ff88"
+    };
+
+    function drawTarget() {
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+      ctx.fillStyle = target.color;
+      ctx.shadowColor = target.color;
+      ctx.shadowBlur = 20;
+      ctx.fill();
+      ctx.closePath();
+    }
+
+    // Mouse interaction
+    let combo = 0;
+
+    canvas.addEventListener("click", (e) => {
+      const x = e.clientX;
+      const y = e.clientY;
+
+      clickSound.currentTime = 0;
+      clickSound.play();
+
+      const dist = Math.hypot(x - target.x, y - target.y);
+      if (dist < target.radius) {
+        score += ++combo; // Increase combo multiplier
+        scoreElement.textContent = `Score: ${score}`;
+        target.x = Math.random() * canvas.width;
+        target.y = Math.random() * canvas.height;
+        if (score % 5 === 0) { // Make the target smaller after every 5 points
+          target.radius = Math.max(10, target.radius - 2);
+        }
+      } else {
+        combo = 0; // Reset combo if missed
+      }
+
+      // Explosion effect at click position
+      const radius = Math.random() * 8 + 5;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const velocity = {
+        x: (Math.random() - 0.5) * 4,
+        y: (Math.random() - 0.5) * 4
+      };
+      particles.push(new Particle(x, y, radius, color, velocity));
+    });
+
+    // Audio interaction
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 64;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+    });
+
+    function animate(time) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      analyser.getByteFrequencyData(dataArray);
+      let audioBoost = dataArray[1] / 128.0;
+
+      for (let particle of particles) {
+        particle.radius += (audioBoost - particle.radius) * 0.05;
+        particle.update();
+      }
+
+      drawOrbitingShape(time);
+      drawTarget();
+      requestAnimationFrame(animate);
+    }
+
+    function startGame() {
+      startScreen.style.display = "none";
+      createParticles(100);
+      animate();
+    }
+
+    startBtn.addEventListener("click", startGame);
+
+    fullscreenBtn.addEventListener("click", () => {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen();
+      } else if (document.documentElement.mozRequestFullScreen) {
+        document.documentElement.mozRequestFullScreen();
+      } else if (document.documentElement.webkitRequestFullscreen) {
+        document.documentElement.webkitRequestFullscreen();
+      } else if (document.documentElement.msRequestFullscreen) {
+        document.documentElement.msRequestFullscreen();
+      }
+    });
+  </script>
+</body>
+</html>
+
